@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "system_error": "c",
+        "__config": "c",
+        "__functional_03": "c",
+        "functional": "c",
+        "locale": "c",
+        "random": "c",
+        "netdb.h": "c",
+        "unistd.h": "c"
+    }
+}

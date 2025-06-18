@@ -1,7 +1,4 @@
-[文件名]: proxylab.pdf  
-[文件内容开始]  
-===== 第1页 =====  
-
+# 代理实验：编写一个缓存Web代理
 15-213，20XX年秋季  
 代理实验：编写一个缓存Web代理  
 发布日期：11月19日，星期四  
@@ -24,7 +21,7 @@ Web代理是一个介于Web浏览器和*终端服务器*之间的中间程序。
 
 这是一个个人项目。  
 
-===== 第2页 =====  
+  
 
 ## 3 实验材料说明  
 
@@ -54,7 +51,7 @@ GET /hub/index.html HTTP/1.0
 
 注意，HTTP请求中的所有行都以回车符'\r'和换行符'\n'结尾。同样重要的是，每个HTTP请求以一个空行"\r\n"结束。  
 
-===== 第3页 =====  
+  
 
 在上述示例中，你会注意到浏览器的请求行以HTTP/1.1结尾，而代理的请求行以HTTP/1.0结尾。现代浏览器会生成HTTP/1.1请求，但你的代理应处理这些请求并将其作为HTTP/1.0请求转发。  
 
@@ -97,7 +94,7 @@ port-for-user.pl返回的端口号p始终为偶数。因此，如果需要额外
 
 请不要随机选择端口，否则可能会干扰其他用户。  
 
-===== 第4页 =====  
+  
 
 ## 5 第二部分：处理多个并发请求  
 
@@ -128,7 +125,7 @@ MAX_CACHE_SIZE = 1 MiB
 
 MAX_OBJECT_SIZE = 100 KiB  
 
-===== 第5页 =====  
+  
 
 为了方便，proxy.c中提供了这两个大小限制的宏定义。  
 
@@ -162,7 +159,7 @@ MAX_CACHE_SIZE + T * MAX_OBJECT_SIZE
 
 linux> ./driver.sh  
 
-===== 第6页 =====  
+  
 
 必须在Linux机器上运行该脚本。  
 
@@ -194,7 +191,7 @@ linux> curl -v --proxy http://localhost:15214 http://localhost:15213/home.html
 * About to connect() to proxy localhost port 15214 (#0)  
 * Trying 127.0.0.1... connected  
 
-===== 第7页 =====  
+  
 
 * Connected to localhost (127.0.0.1) port 15214 (#0)  
 > GET http://localhost:15213/home.html HTTP/1.1  
@@ -265,7 +262,7 @@ linux> make handin
 * *csapp.c中提供的错误处理函数不适用于代理，因为服务器开始接受连接后不应终止。你需要修改它们或编写自己的函数。  
 * *你可以自由修改实验材料目录中的文件。例如，出于良好的模块化考虑，你可以将缓存函数实现为cache.c和cache.h中的库。当然，添加新文件需要更新提供的Makefile。  
 
-===== 第8页 =====  
+  
 
 * *如CS:APP3e教科书第964页旁注所述，代理必须忽略SIGPIPE信号，并应优雅处理返回EPIPE错误的写操作。  
 * *有时，从提前关闭的套接字读取字节会导致read返回-1且errno设置为ECONNRESET。代理不应因此错误而终止。  
