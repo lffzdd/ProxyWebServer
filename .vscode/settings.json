@@ -1,5 +1,6 @@
 {
     "files.associations": {
+        "*.html": "html",
         "system_error": "c",
         "__config": "c",
         "__functional_03": "c",
@@ -37,6 +38,9 @@
         "fcntl.h": "c",
         "config.h": "c",
         "http_respond.h": "c",
-        "http_proxy.h": "c"
+        "http_proxy.h": "c",
+        "ssl.h": "c",
+        "ssl2.h": "c",
+        "ssl3.h": "c"
     }
 }

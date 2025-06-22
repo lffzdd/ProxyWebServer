@@ -66,7 +66,6 @@ int respondClient(int client_fd) {
 }
 
 
-// 用于代理
 int openConnectfd(const char* hostname, const char* port) {
     addrinfo hints = { 0 }, * results;
 
@@ -89,7 +88,7 @@ int openConnectfd(const char* hostname, const char* port) {
 }
 
 int proxyClient(int client_fd) {
-    httpProxy(client_fd);
+    httpsProxy(client_fd);
 
     return 0;
 }
