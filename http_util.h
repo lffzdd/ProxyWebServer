@@ -17,7 +17,8 @@ typedef struct {
     // 字段
     char host[1024];      // Host 头
     char user_agent[512]; // User-Agent 头,记录客户端信息
-    char connection[32]; // 决定处理完本次连接后是否断开TCP连接,若为keep-alive后续可以复用同一个TCP提高效率
+    char connection
+        [32]; // 决定处理完本次连接后是否断开TCP连接,若为keep-alive后续可以复用同一个TCP提高效率
 } http_request_t;
 
 int parseHttpRequest(int client_fd, http_request_t* req);
@@ -35,5 +36,19 @@ extern const mime_map_t mime_map[];
 mime_t getMimeType(const char* filepath);
 
 void httpError(int client_fd, const char* message);
+
+typedef struct {
+    int client_fd;
+    int server_fd;
+    int client_closed_rd;
+    int client_closed_wr;
+    int server_closed_rd;
+    int server_closed_wr;
+    char buf_c2s[MAXBUF];
+    char buf_s2c[MAXBUF];
+    int buf_c2s_len;
+    int buf_s2c_len;
+} conn_t;
+
 
 #endif // HTTP_UTIL_H

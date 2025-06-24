@@ -4,10 +4,13 @@
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
+#include<stdlib.h>
+#include "hashmap.h"
 
 void httpError(int client_fd, const char* message) {
     rio_written(client_fd, (void*)message, strlen(message));
 }
+
 
 static http_method_t parse_http_method(const char* method) {
     if ((strcmp(method, "CONNECT")) == 0)
@@ -82,3 +85,5 @@ mime_t getMimeType(const char* filepath) {
 
     return mime_map[sizeof(mime_map) / sizeof(mime_map[0]) - 1].mime_type;
 }
+
+

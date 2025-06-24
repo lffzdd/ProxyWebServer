@@ -41,6 +41,11 @@
         "http_proxy.h": "c",
         "ssl.h": "c",
         "ssl2.h": "c",
-        "ssl3.h": "c"
+        "ssl3.h": "c",
+        "cstdlib": "c",
+        "memory": "c",
+        "memory_resource": "c",
+        "ostream": "c",
+        "new": "c"
     }
 }
