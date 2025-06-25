@@ -5,7 +5,6 @@ int fd_hash_func(int key_fd) {
 }
 
 
-void remove_fd_pair(fd_map_t fd_map[FD_HASH_SIZE], int fd) { }/// @brief 插入一对映射
 void add_fd_pair(fd_map_t* fd_map[FD_HASH_SIZE], int client_fd, int server_fd) {
     int client_idx = fd_hash_func(client_fd);
     int server_idx = fd_hash_func(server_fd);

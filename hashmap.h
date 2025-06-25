@@ -5,10 +5,10 @@
 #define FD_HASH_REMAINDER 4093
 #define FD_HASH_NULL -1
 
-typedef enum { CLIENT_FD, SERVER_FD } socket_type_t;
+typedef enum { CLIENT_FD, SERVER_FD } fd_type_t;
 
 typedef struct {
-    socket_type_t socket_type; // 是client还是server
+    fd_type_t socket_type; // 是client还是server
     int fd;                    // 对端fd
 } fd_peer_t;
 

@@ -37,18 +37,4 @@ mime_t getMimeType(const char* filepath);
 
 void httpError(int client_fd, const char* message);
 
-typedef struct {
-    int client_fd;
-    int server_fd;
-    int client_closed_rd;
-    int client_closed_wr;
-    int server_closed_rd;
-    int server_closed_wr;
-    char buf_c2s[MAXBUF];
-    char buf_s2c[MAXBUF];
-    int buf_c2s_len;
-    int buf_s2c_len;
-} conn_t;
-
-
 #endif // HTTP_UTIL_H

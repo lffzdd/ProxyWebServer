@@ -4,6 +4,8 @@
 #include "net_utils.h"
 #include "rio.h"
 #include <fcntl.h>
+#include"conn_state_machine.h"
+
 
 int httpsProxy(int client_fd) {
     // 解析客户端请求体

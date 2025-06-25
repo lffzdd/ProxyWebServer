@@ -46,6 +46,7 @@
         "memory": "c",
         "memory_resource": "c",
         "ostream": "c",
-        "new": "c"
+        "new": "c",
+        "conn_state_machine.h": "c"
     }
 }
