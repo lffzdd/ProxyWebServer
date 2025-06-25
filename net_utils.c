@@ -1,12 +1,12 @@
 #define _POSIX_C_SOURCE 200122L
 #include "net_utils.h"
 #include "config.h"
-#include "http_respond.h"
 #include "http_proxy.h"
 #include "rio.h"
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
+#include<fcntl.h>
 
 typedef struct addrinfo addrinfo;
 typedef struct sockaddr sockaddr;
@@ -19,7 +19,12 @@ int openListenfd(const char* port) {
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM; // 使用 TCP 连接
 
-    getaddrinfo("localhost", port, &hints, &results);
+    int ret = getaddrinfo(NULL, port, &hints, &results);
+    if (ret != 0) {
+        fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret));
+        return -1;
+    }
+
 
     int listen_fd;
     for (struct addrinfo* p = results; p; p = p->ai_next) {
@@ -36,7 +41,11 @@ int openListenfd(const char* port) {
 
         close(listen_fd);
     }
+
+    freeaddrinfo(results);
+
     return listen_fd;
+
 }
 
 int acceptClientfd(int listen_fd) {
@@ -44,26 +53,26 @@ int acceptClientfd(int listen_fd) {
     socklen_t client_addr_len = sizeof(client_addr);
     int client_fd =
         accept(listen_fd, (sockaddr*)&client_addr, &client_addr_len);
+    if (client_fd < 0) {
+        perror("acceptClientfd");
+        return -1;
+    }
+
 
     char hostname[256], port[128];
-    getnameinfo((sockaddr*)&client_addr, client_addr_len, hostname,
-        sizeof(hostname), port, sizeof(port), 0);
-    printf("accept来自%s:%s的connect:\n", hostname, port);
+    if (getnameinfo((sockaddr*)&client_addr, client_addr_len, hostname,
+        sizeof(hostname), port, sizeof(port), 0) == 0)
+        printf("accept来自%s:%s的connect:\n", hostname, port);
+    else
+        printf("accept: unknown client\n");
+
+    make_socket_non_blocking(client_fd);
 
     return client_fd;
 }
 
-int handleClient(int client_fd, client_handler_t handler) {
-    return handler(client_fd);
-}
 
-int respondClient(int client_fd) {
-    httpRespond(client_fd);
-    char response_buf[] = "你好,客户端\n";
-    rio_written(client_fd, response_buf, sizeof(response_buf));
 
-    return 0;
-}
 
 
 int openConnectfd(const char* hostname, const char* port) {
@@ -84,6 +93,8 @@ int openConnectfd(const char* hostname, const char* port) {
         close(server_fd);
     }
 
+    make_socket_non_blocking(server_fd);
+
     return server_fd;
 }
 
@@ -91,4 +102,10 @@ int proxyClient(int client_fd) {
     httpsProxy(client_fd);
 
     return 0;
+}
+
+int make_socket_non_blocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+
+    return fcntl(fd, F_SETFL, flags |= O_NONBLOCK);
 }

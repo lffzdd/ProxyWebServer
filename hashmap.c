@@ -1,4 +1,5 @@
 #include"hashmap.h"
+#include<malloc.h>
 
 int fd_hash_func(int key_fd) {
     return key_fd % FD_HASH_REMAINDER;
@@ -55,7 +56,7 @@ void remove_fd_pair(fd_map_t* fd_map[FD_HASH_SIZE], int fd) {
 
     int peer_fd = (get_peer_fd(fd_map, fd)).fd;
     int peer_idx = fd_hash_func(peer_fd);
-    fd_map_t** node_pp = &fd_map[peer_idx];
+    node_pp = &fd_map[peer_idx];
     while (*node_pp) {
         if ((*node_pp)->hash_key_fd == peer_fd) {
             fd_map_t* tmp = *node_pp;

@@ -20,9 +20,9 @@ typedef struct fd_map_node {
 
 int fd_hash_func(int key_fd);
 
-void add_fd_pair(fd_map_t fd_map[FD_HASH_SIZE], int client_fd, int server_fd);
+void add_fd_pair(fd_map_t* fd_map[FD_HASH_SIZE], int client_fd, int server_fd);
 
-fd_peer_t get_peer_fd(fd_map_t fd_map[FD_HASH_SIZE], int fd);
+fd_peer_t get_peer_fd(fd_map_t* fd_map[FD_HASH_SIZE], int fd);
 
-void remove_fd_pair(fd_map_t fd_map[FD_HASH_SIZE], int fd);
+void remove_fd_pair(fd_map_t* fd_map[FD_HASH_SIZE], int fd);
 #endif // HASH_MAP_H

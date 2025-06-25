@@ -47,6 +47,13 @@
         "memory_resource": "c",
         "ostream": "c",
         "new": "c",
-        "conn_state_machine.h": "c"
+        "conn_state_machine.h": "c",
+        "iosfwd": "c",
+        "stop_token": "c",
+        "iomanip": "c",
+        "hashmap.h": "c",
+        "cstring": "c",
+        "__bit_reference": "c",
+        "__string": "c"
     }
 }
