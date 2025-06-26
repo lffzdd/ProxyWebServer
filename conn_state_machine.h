@@ -19,14 +19,18 @@ typedef struct conn_t {
 
     char buf_c2s[MAXBUF];
     char buf_s2c[MAXBUF];
-    int buf_c2s_len; // 客户端缓冲区长度
-    int buf_s2c_len; // 服务器缓冲区长度
+    int buf_c2s_len; // 客户端缓冲区接收到的数据长度
+    int buf_s2c_len; // 服务器缓冲区接收到的数据长度
+    int buf_c2s_sent;// 户端缓缓冲区已发送的数据长度
+    int buf_s2c_sent; //服务器缓冲区已发送的数据长度
 
     int client_closed_r; // 客户端是否关闭读
     int client_closed_w; // 客户端是否关闭写
     int server_closed_r; // 服务器是否关闭读
     int server_closed_w; // 服务器是否关闭写
 
+    fd_event_t* client_event;
+    fd_event_t* server_event;
 } conn_t;
 
 typedef struct fd_event_t {

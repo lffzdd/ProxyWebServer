@@ -28,6 +28,8 @@ void* Malloc(size_t size);
 
 int Read(int fd, void* buf, size_t nbytes);
 
+int Write(int fd, const void* buf, size_t nbytes);
+
 int Epoll_ctl(int epfd, int op, int fd, struct epoll_event* ev);
 
 

@@ -53,6 +53,14 @@ int Read(int fd, void* buf, size_t nbytes) {
     return n;
 }
 
+int Write(int fd, const void* buf, size_t nbytes) {
+    int n = write(fd, buf, nbytes);
+    if (n < 0)
+        perror("write");
+
+    return n;
+}
+
 int Epoll_ctl(int epfd, int op, int fd, struct epoll_event* ev) {
     int ret = epoll_ctl(epfd, op, fd, ev);
     if (ret < 0)

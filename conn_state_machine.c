@@ -18,8 +18,11 @@ int add_client_to_epoll(int epfd, int listen_fd) {
     conn->state = CONN_INIT;
 
     fd_event_t* fd_event = Malloc(sizeof(fd_event_t));
+    memset(fd_event, 0, sizeof(fd_event_t));
     fd_event->conn = conn;
     fd_event->is_client = 1;
+
+    conn->client_event = fd_event;
 
     struct epoll_event ev = { .events = EPOLLIN, .data.ptr = fd_event };
     Epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev);
@@ -53,37 +56,85 @@ int add_server_to_epoll(int epfd, conn_t* conn) {
     fd_event->conn = conn;
     fd_event->is_client = 0;
 
+    conn->server_event = fd_event;
+
     struct epoll_event ev = { .events = EPOLLIN, .data.ptr = fd_event };
     Epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);
 
     return 0;
 }
 
-int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state) {
-    conn->buf_c2s_len =
-        Read(conn->client_fd, conn->buf_c2s, sizeof(conn->buf_c2s));
+int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state, int epfd) {
 
-    // 如果读到了EOF,说明客户端主动关闭了
-    if (conn->buf_c2s_len == 0) {
-        conn->client_closed_r = 1;
-        conn->state = eof_state;
-        return 0;
+    // 一.首先尝试还没写完的数据
+    while (conn->buf_c2s_len > conn->buf_c2s_sent) {
+        int n = write(conn->server_fd, conn->buf_c2s + conn->buf_c2s_sent, conn->buf_c2s_len - conn->buf_c2s_sent);
+
+        if (n < 0) { // 没写进去,要么阻塞要么出错
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                // 阻塞,注册 EPOLLOUT事件,让它写完
+                struct epoll_event ev = { .events = EPOLLIN | EPOLLOUT,.data.ptr = conn->server_event };
+                Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev);
+                return 0;
+            } else {
+                perror("write to server");
+                return 1;
+            }
+        }
+        conn->buf_c2s_sent += n;
     }
 
-    // 如果返回-1,说明暂时没数据
-    if (conn->buf_c2s_len < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+    // 如果所有数据都被写完了,取消监听,清空缓冲区状态
+
+    struct epoll_event ev = { .events = EPOLLIN ,.data.ptr = conn->server_event };
+    Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev);
+
+    conn->buf_c2s_len = 0;
+    conn->buf_c2s_sent = 0;
+
+    // 二.读取客户端新数据
+
+    int n =
+        read(conn->client_fd, conn->buf_c2s, sizeof(conn->buf_c2s));
+    if (n < 0) { // 没读进去,要么阻塞要么出错
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // 阻塞,下次再读
             return 0;
-        else
+        } else {
+            perror("read from client");
             return 1;
+        }
+    } else if (n == 0) {// 读到EOF,客户端主动关闭了
+        conn->client_closed_r = 0;
+        conn->state = eof_state;
+    } else { // 读到了,记录下来
+        conn->buf_c2s_len = n;
+        conn->buf_c2s_sent = 0;
     }
 
-    // 读到的不是EOF,内容发送给服务器
-    write(conn->server_fd, conn->buf_c2s, conn->buf_c2s_len);
-    return 0;
+    // 三.尝试发送刚读的数据
+    // while (conn->buf_c2s_len > conn->buf_c2s_sent) {
+    //     int n = write(conn->server_fd, conn->buf_c2s + conn->buf_c2s_sent, conn->buf_c2s_len - conn->buf_c2s_sent);
+
+    //     if (n < 0) { // 没写进去,要么阻塞要么出错
+    //         if (errno == EAGAIN || errno == EWOULDBLOCK) {
+    //             // 阻塞,下次再写
+    //             return 0;
+    //         } else {
+    //             perror("write to server");
+    //             return 1;
+    //         }
+    //     }
+    //     conn->buf_c2s_sent += n;
+    // }
+
+    // conn->buf_c2s_len = 0;
+    // conn->buf_c2s_sent = 0;
+
+    return handle_connection_c2s_forwarding(conn, eof_state, epfd);
 }
 
-int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state) {
+int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state, int epfd) {
     conn->buf_s2c_len =
         Read(conn->server_fd, conn->buf_s2c, sizeof(conn->buf_s2c));
 
@@ -121,11 +172,11 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
         case CONN_ACTIVE:
             if (is_client) { // 如果是客户端
                 if (handle_connection_c2s_forwarding(
-                    conn, CONN_HALF_CLOSED_BY_CLIENT) != 0)
+                    conn, CONN_HALF_CLOSED_BY_CLIENT, epfd) != 0)
                     conn->state = CONN_ERROR;
             } else { // 如果是服务器
                 if (handle_connection_s2c_forwarding(
-                    conn, CONN_HALF_CLOSED_BY_SERVER) != 0)
+                    conn, CONN_HALF_CLOSED_BY_SERVER, epfd) != 0)
                     conn->state = CONN_ERROR;
             }
             return 0;
@@ -134,7 +185,7 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
         case CONN_HALF_CLOSED_BY_CLIENT:
             // 客户端已经不再发送消息了,此时只有服务器能发送消息
             if (!is_client) {
-                if (handle_connection_s2c_forwarding(conn, CONN_FULLY_CLOSED) != 0)
+                if (handle_connection_s2c_forwarding(conn, CONN_FULLY_CLOSED, epfd) != 0)
                     conn->state = CONN_ERROR;
             }
             return 0;
@@ -143,7 +194,7 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
         case CONN_HALF_CLOSED_BY_SERVER:
             // 服务器已经不再发送消息了,此时只有客户端能发送消息
             if (is_client) {
-                if (handle_connection_c2s_forwarding(conn, CONN_FULLY_CLOSED) != 0)
+                if (handle_connection_c2s_forwarding(conn, CONN_FULLY_CLOSED, epfd) != 0)
                     conn->state = CONN_ERROR;
             }
             return 0;
@@ -160,6 +211,7 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
                 close(conn->server_fd);
             }
             free(conn);
+            free(fd_event);
             return 0;
             break;
 
