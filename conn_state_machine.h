@@ -4,6 +4,7 @@
 #include "config.h"
 
 typedef enum {
+    CONN_INIT,                  // 初始状态,连接到服务器
     CONN_ACTIVE,                // 活跃中
     CONN_HALF_CLOSED_BY_CLIENT, // 客户端半关闭(半关闭读)
     CONN_HALF_CLOSED_BY_SERVER, // 服务器半关闭(半关闭读)
@@ -28,7 +29,8 @@ typedef struct conn_t {
 
 } conn_t;
 
-int add_connection_to_epoll(int epfd, int listen_fd);
+int add_client_to_epoll(int epfd, int listen_fd);
+int add_server_to_epoll(int epfd, conn_t* conn);
 
 int handle_connection_state(conn_t* conn, int ready_fd, int epfd);
 #endif // CONN_STATE_MACHINE_H

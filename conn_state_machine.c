@@ -3,54 +3,63 @@
 #include "net_utils.h"
 #include <errno.h>
 #include <malloc.h>
+#include <string.h>
 #include <sys/epoll.h>
 #include <unistd.h>
-#include<string.h>
 
-int add_connection_to_epoll(int epfd, int listen_fd) {
+int add_client_to_epoll(int epfd, int listen_fd) {
     int client_fd = acceptClientfd(listen_fd);
     if (client_fd < 0) {
         perror("acceptClientfd");
-        return -1;
-    }
-
-
-    http_request_t req = { 0 };
-    if (parseHttpRequest(client_fd, &req) != 0) {
-        close(client_fd);
-        return -1;
-    }
-
-    int server_fd;
-    if (req.method == CONNECT)
-        server_fd = openConnectfd(req.host, "443");
-    else
-        server_fd = openConnectfd(req.host, "80");
-
-    if (server_fd < 0) {
-        perror("openConnectfd");
-        close(client_fd);
-        return -1;
+        return 1;
     }
 
     conn_t* conn = malloc(sizeof(conn_t));
     if (!conn) {
         perror("malloc");
-        close(client_fd);
-        close(server_fd);
-        return -1;
+        return 1;
     }
 
     memset(conn, 0, sizeof(conn_t));
     conn->client_fd = client_fd;
+    conn->state = CONN_INIT;
+
+    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = conn };
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev) < 0) {
+        perror("add_client_to_epoll->epoll_ctl ");
+        return 1;
+    }
+
+    return 0;
+}
+
+int add_server_to_epoll(int epfd, conn_t* conn) {
+    int client_fd = conn->client_fd;
+    int server_fd;
+
+    http_request_t req = { 0 };
+    if (parseHttpRequest(client_fd, &req) != 0) {
+        perror("add_server_to_epoll->parseHttpRequest");
+        return 1;
+    }
+
+    if (req.method == CONNECT)
+        server_fd = openConnectfd(req.host, "443");
+    else
+        server_fd = openConnectfd(req.host, "80");
+
+    if (server_fd <= 0) {
+        perror("add_server_to_epoll->openConnectfd");
+        return 1;
+    }
+
     conn->server_fd = server_fd;
-    conn->state = CONN_ACTIVE;
 
-    struct epoll_event client_ev = { .events = EPOLLIN, .data.ptr = conn };
-    struct epoll_event server_ev = { .events = EPOLLIN, .data.ptr = conn };
-
-    epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &client_ev);
-    epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &server_ev);
+    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = conn };
+    if (epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev) < 0) {
+        perror("add_server_to_epoll->epoll_ctl");
+        return 1;
+    }
 
     return 0;
 }
@@ -70,10 +79,8 @@ int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state) {
     if (conn->buf_c2s_len < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return 0;
-        else {
-            conn->state = CONN_ERROR;
-            return -1;
-        }
+        else
+            return 1;
     }
 
     // 读到的不是EOF,内容发送给服务器
@@ -92,14 +99,12 @@ int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state) {
         return 0;
     }
 
-    // 如果返回-1,说明暂时没数据
+    // 如果返回 1,说明暂时没数据
     if (conn->buf_s2c_len < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             return 0;
-        else {
-            conn->state = CONN_ERROR;
-            return -1;
-        }
+        else
+            return 1;
     }
 
     // 读到的不是EOF,内容发送给客户端
@@ -109,16 +114,24 @@ int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state) {
 
 int handle_connection_state(conn_t* conn, int ready_fd, int epfd) {
     switch (conn->state) {
+        case CONN_INIT:
+            if (add_server_to_epoll(epfd, conn) != 0)
+                conn->state = CONN_ERROR;
+            return 0;
+            break;
+
         case CONN_ACTIVE:
             if (conn->client_fd == ready_fd) { // 如果是客户端
-                if (handle_connection_c2s_forwarding(
-                    conn, CONN_HALF_CLOSED_BY_CLIENT) != 0)
-                    conn->state = CONN_ERROR;
-            } else if (conn->server_fd == ready_fd) { // 如果是服务器
-                if (handle_connection_s2c_forwarding(
-                    conn, CONN_HALF_CLOSED_BY_SERVER) != 0)
+                if (handle_connection_c2s_forwarding(conn, CONN_HALF_CLOSED_BY_CLIENT) !=
+                    0)
                     conn->state = CONN_ERROR;
             }
+            else if (conn->server_fd == ready_fd) { // 如果是服务器
+                if (handle_connection_s2c_forwarding(conn, CONN_HALF_CLOSED_BY_SERVER) !=
+                    0)
+                    conn->state = CONN_ERROR;
+            }
+            return 0;
             break;
 
         case CONN_HALF_CLOSED_BY_CLIENT:
@@ -127,6 +140,7 @@ int handle_connection_state(conn_t* conn, int ready_fd, int epfd) {
                 if (handle_connection_s2c_forwarding(conn, CONN_FULLY_CLOSED) != 0)
                     conn->state = CONN_ERROR;
             }
+            return 0;
             break;
 
         case CONN_HALF_CLOSED_BY_SERVER:
@@ -135,6 +149,7 @@ int handle_connection_state(conn_t* conn, int ready_fd, int epfd) {
                 if (handle_connection_c2s_forwarding(conn, CONN_FULLY_CLOSED) != 0)
                     conn->state = CONN_ERROR;
             }
+            return 0;
             break;
 
         case CONN_FULLY_CLOSED:

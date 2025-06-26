@@ -8,7 +8,9 @@
 
 #define PROXY_MODE 1
 
-#define RESPOND_ROOTDIR "www"
-#define DEFAULT_HOME_PAGE "index.html"
+#define RESPOND_ROOTDIR "www" // 作为服务器时的根目录
+#define DEFAULT_HOME_PAGE "index.html" // 作为服务器时的默认主页
+
+#define EPOLL_LEN 1024
 
 #endif // CONFIG_H

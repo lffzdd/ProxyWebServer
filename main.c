@@ -9,7 +9,6 @@
 #include<netdb.h>
 #include"conn_state_machine.h"
 
-#define EPOLL_LEN 1024
 int main() {
     // 监听客户端
     int listen_fd = openListenfd(PORT);
@@ -20,7 +19,7 @@ int main() {
 
     printf("代理服务器启动，监听端口: %s，listen_fd = %d\n", PORT, listen_fd);
 
-    if (listen(listen_fd, 1024) < 0) {
+    if (listen(listen_fd, EPOLL_LEN) < 0) {
         perror("listen");
         exit(1);
     }
@@ -32,19 +31,18 @@ int main() {
     }
 
 
-    struct epoll_event events[EPOLL_LEN], ev;
+    struct epoll_event events[EPOLL_LEN * 2], ev;
     ev.events = EPOLLIN;
     ev.data.fd = listen_fd;
-    ev.data.ptr = NULL;
 
     if (epoll_ctl(epfd, EPOLL_CTL_ADD, listen_fd, &ev) < 0) {
-        perror("epoll_ctl");
+        perror("epoll_ctl listenfd");
         exit(1);
     }
 
 
     while (1) {
-        int nready = epoll_wait(epfd, events, EPOLL_LEN, -1);
+        int nready = epoll_wait(epfd, events, EPOLL_LEN * 2, -1);
         printf("epoll_wait 返回 %d 个事件\n", nready);
 
         for (int i = 0; i < nready; i++) {
@@ -53,8 +51,9 @@ int main() {
 
             if (ready_fd == listen_fd) { // 新连接到来
                 printf("检测到新连接\n");
-                add_connection_to_epoll(epfd, ready_fd);
-            } else { // 已有连接
+                add_client_to_epoll(epfd, ready_fd);
+            }
+            else { // 已有连接
                 conn_t* conn = events[i].data.ptr;
                 if (conn) {
                     handle_connection_state(conn, ready_fd, epfd);
