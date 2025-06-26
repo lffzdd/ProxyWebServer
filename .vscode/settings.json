@@ -54,6 +54,7 @@
         "hashmap.h": "c",
         "cstring": "c",
         "__bit_reference": "c",
-        "__string": "c"
+        "__string": "c",
+        "err.h": "c"
     }
 }

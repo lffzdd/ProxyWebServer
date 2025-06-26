@@ -9,6 +9,7 @@ int openConnectfd(const char* hostname, const char* port);
 
 
 int respondClient(int client_fd);
+
 int proxyClient(int client_fd);
 
 int make_socket_non_blocking(int fd);

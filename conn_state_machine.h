@@ -29,8 +29,14 @@ typedef struct conn_t {
 
 } conn_t;
 
+typedef struct fd_event_t {
+    conn_t* conn;
+    int is_client;
+}fd_event_t;
+
+
 int add_client_to_epoll(int epfd, int listen_fd);
 int add_server_to_epoll(int epfd, conn_t* conn);
 
-int handle_connection_state(conn_t* conn, int ready_fd, int epfd);
+int handle_connection_state(fd_event_t* fd_event, int epfd);
 #endif // CONN_STATE_MACHINE_H

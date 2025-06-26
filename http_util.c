@@ -5,7 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 #include<stdlib.h>
-#include "hashmap.h"
 
 void httpError(int client_fd, const char* message) {
     rio_written(client_fd, (void*)message, strlen(message));
@@ -55,6 +54,7 @@ int parseHttpRequest(int client_fd, http_request_t* req) {
         if (sscanf(request_buf, "Connection: %31s", req->connection) == 1)
             continue;
     }
+
     return 0;
 }
 

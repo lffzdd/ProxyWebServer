@@ -3,10 +3,11 @@
 #include "config.h"
 #include "http_proxy.h"
 #include "rio.h"
+#include "sys_wrap.h"
+#include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
-#include<fcntl.h>
 
 typedef struct addrinfo addrinfo;
 typedef struct sockaddr sockaddr;
@@ -24,7 +25,6 @@ int openListenfd(const char* port) {
         fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret));
         return -1;
     }
-
 
     int listen_fd;
     for (struct addrinfo* p = results; p; p = p->ai_next) {
@@ -45,19 +45,13 @@ int openListenfd(const char* port) {
     freeaddrinfo(results);
 
     return listen_fd;
-
 }
 
 int acceptClientfd(int listen_fd) {
     sockaddr_storage client_addr;
     socklen_t client_addr_len = sizeof(client_addr);
     int client_fd =
-        accept(listen_fd, (sockaddr*)&client_addr, &client_addr_len);
-    if (client_fd < 0) {
-        perror("acceptClientfd");
-        return -1;
-    }
-
+        Accept(listen_fd, (sockaddr*)&client_addr, &client_addr_len);
 
     char hostname[256], port[128];
     if (getnameinfo((sockaddr*)&client_addr, client_addr_len, hostname,
@@ -71,10 +65,6 @@ int acceptClientfd(int listen_fd) {
     return client_fd;
 }
 
-
-
-
-
 int openConnectfd(const char* hostname, const char* port) {
     addrinfo hints = { 0 }, * results;
 
@@ -85,7 +75,8 @@ int openConnectfd(const char* hostname, const char* port) {
 
     int server_fd;
     for (addrinfo* p = results; p; p = p->ai_next) {
-        if ((server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0)
+        if ((server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) <
+            0)
             continue;
         if (connect(server_fd, p->ai_addr, p->ai_addrlen) == 0)
             break;
@@ -99,7 +90,7 @@ int openConnectfd(const char* hostname, const char* port) {
 }
 
 int proxyClient(int client_fd) {
-    httpsProxy(client_fd);
+    // httpsProxy(client_fd);
 
     return 0;
 }

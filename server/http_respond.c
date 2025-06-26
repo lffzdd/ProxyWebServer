@@ -5,6 +5,7 @@
 #include"http_util.h"
 #include"config.h"
 #include"rio.h"
+#include"sys_wrap.h"
 
 int handle_get_method(int client_fd, const http_request_t* req) {
     const char* real_uri = req->uri[0] == '/' ? req->uri + 1 : req->uri; // 确保根路径后只有1个/
@@ -43,7 +44,7 @@ int handle_get_method(int client_fd, const http_request_t* req) {
         }
 
         ssize_t char_cnt;
-        while ((char_cnt = read(fd, buf, sizeof(buf))) > 0) {
+        while ((char_cnt = Read(fd, buf, sizeof(buf))) > 0) {
             if (rio_written(client_fd, buf, char_cnt) != char_cnt) {
                 httpError(client_fd, "传输文件失败!");
                 return 1;
