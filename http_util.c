@@ -11,7 +11,7 @@ void httpError(int client_fd, const char* message) {
 }
 
 
-static http_method_t parse_http_method(const char* method) {
+http_method_t parse_http_method(const char* method) {
     if ((strcmp(method, "CONNECT")) == 0)
         return CONNECT;
     if ((strcmp(method, "GET")) == 0)

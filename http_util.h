@@ -21,6 +21,8 @@ typedef struct {
         [32]; // 决定处理完本次连接后是否断开TCP连接,若为keep-alive后续可以复用同一个TCP提高效率
 } http_request_t;
 
+http_method_t parse_http_method(const char* method);
+
 int parseHttpRequest(int client_fd, http_request_t* req);
 
 // MIME 文件类型结构体
