@@ -50,9 +50,7 @@ int main() {
                     handle_connection_state(fd_event, epfd); // 处理CONN_ERROR
             }
         }
-    }
-
-    close(epfd);
+    }    close(epfd);
     close(listen_fd);
 
     return 0;

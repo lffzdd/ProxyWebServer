@@ -2,10 +2,11 @@
 #define CONN_STATE_MACHINE_H
 
 #include "config.h"
-#include"http_util.h"
+#include "http_util.h"
 
 typedef enum {
   CONN_INIT,                  // 初始状态,连接到服务器
+  CONN_SENDING_CONNECT_RESP,  // 正在发送CONNECT响应
   CONN_ACTIVE,                // 活跃中
   CONN_HALF_CLOSED_BY_CLIENT, // 客户端半关闭(半关闭读)
   CONN_HALF_CLOSED_BY_SERVER, // 服务器半关闭(半关闭读)
@@ -15,7 +16,8 @@ typedef enum {
 
 typedef enum {
   PARSE_REQUEST_LINE,
-  PARSE_COMPLETE,
+  PARSE_REQUEST_HOST,
+  PARSE_COMPLETE
 } http_parse_state_t;
 
 typedef enum {
@@ -39,6 +41,11 @@ typedef struct conn_t {
   int buf_s2c_in;  // 服务器缓冲区接收到的数据长度
   int buf_c2s_out; // 户端缓缓冲区已发送的数据长度
   int buf_s2c_out; // 服务器缓冲区已发送的数据长度
+
+  // CONNECT 响应缓冲区
+  char connect_resp[128];
+  int connect_resp_len;
+  int connect_resp_sent;
 
   int client_closed_r; // 客户端是否关闭读
   int client_closed_w; // 客户端是否关闭写
@@ -64,7 +71,9 @@ typedef struct fd_event_t {
 int add_client_to_epoll(int epfd, int listen_fd);
 int try_parse_http_request(conn_t* conn);
 int parse_request_line(conn_t* conn);
+int parse_request_host(conn_t* conn);
 int add_server_to_epoll(int epfd, conn_t* conn);
+int handle_connect_response_sending(conn_t* conn, int epfd);
 
 int handle_connection_state(fd_event_t* fd_event, int epfd);
 #endif // CONN_STATE_MACHINE_H

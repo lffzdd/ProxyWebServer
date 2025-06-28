@@ -71,20 +71,34 @@ int openConnectfd(const char* hostname, const char* port) {
     hints.ai_socktype = SOCK_STREAM; // TCP
     hints.ai_family = AF_UNSPEC;     // IPV4和IPV6
 
-    getaddrinfo(hostname, port, &hints, &results);
-
-    int server_fd;
-    for (addrinfo* p = results; p; p = p->ai_next) {
-        if ((server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) <
-            0)
-            continue;
-        if (connect(server_fd, p->ai_addr, p->ai_addrlen) == 0)
-            break;
-
-        close(server_fd);
+    int ret = getaddrinfo(hostname, port, &hints, &results);
+    if (ret != 0) {
+        fprintf(stderr, "getaddrinfo failed for %s:%s - %s\n", hostname, port, gai_strerror(ret));
+        return -1;
     }
 
-    make_socket_non_blocking(server_fd);
+    int server_fd = -1;
+    for (addrinfo* p = results; p; p = p->ai_next) {
+        if ((server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) < 0) {
+            perror("socket");
+            continue;
+        }
+
+        if (connect(server_fd, p->ai_addr, p->ai_addrlen) == 0) {
+            printf("成功连接到 %s:%s\n", hostname, port);
+            break;
+        }
+
+        perror("connect");
+        close(server_fd);
+        server_fd = -1;
+    }
+
+    freeaddrinfo(results);
+
+    if (server_fd > 0) {
+        make_socket_non_blocking(server_fd);
+    }
 
     return server_fd;
 }
