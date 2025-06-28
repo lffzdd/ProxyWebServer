@@ -2,6 +2,7 @@
 #define CONN_STATE_MACHINE_H
 
 #include "config.h"
+#include"http_util.h"
 
 typedef enum {
   CONN_INIT,                  // 初始状态,连接到服务器
@@ -16,6 +17,16 @@ typedef enum {
   PARSE_REQUEST_LINE,
   PARSE_COMPLETE,
 } http_parse_state_t;
+
+typedef enum {
+  TRY_WRITE_OK = 0,
+  TRY_WRITE_BLOCKED = 1,
+  TRY_WRITE_ERR = -1
+} write_result_t;
+
+
+struct fd_event_t;
+typedef struct fd_event_t fd_event_t;
 
 typedef struct conn_t {
   int client_fd;     // 客户端文件描述符
@@ -34,8 +45,8 @@ typedef struct conn_t {
   int server_closed_r; // 服务器是否关闭读
   int server_closed_w; // 服务器是否关闭写
 
-  fd_event_t *client_event;
-  fd_event_t *server_event;
+  fd_event_t* client_event;
+  fd_event_t* server_event;
 
   // HTTP 解析相关
   http_parse_state_t parse_state;
@@ -46,14 +57,14 @@ typedef struct conn_t {
 } conn_t;
 
 typedef struct fd_event_t {
-  conn_t *conn;
+  conn_t* conn;
   int is_client;
 } fd_event_t;
 
 int add_client_to_epoll(int epfd, int listen_fd);
-int try_parse_http_request(conn_t *conn);
-int parse_request_line(conn_t *conn);
-int add_server_to_epoll(int epfd, conn_t *conn);
+int try_parse_http_request(conn_t* conn);
+int parse_request_line(conn_t* conn);
+int add_server_to_epoll(int epfd, conn_t* conn);
 
-int handle_connection_state(fd_event_t *fd_event, int epfd);
+int handle_connection_state(fd_event_t* fd_event, int epfd);
 #endif // CONN_STATE_MACHINE_H

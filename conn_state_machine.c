@@ -118,35 +118,74 @@ int add_server_to_epoll(int epfd, conn_t* conn) {
     return 0;
 }
 
-int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state,
-    int epfd) {
+/* 转发消息 */
 
-    // 一.首先尝试还没写完的数据
-    while (conn->buf_c2s_in > conn->buf_c2s_out) {
-        int n = write(conn->server_fd, conn->buf_c2s + conn->buf_c2s_out,
-            conn->buf_c2s_in - conn->buf_c2s_out);
+write_result_t try_writing_to_peer(conn_t* conn, int epfd, int is_c2s) {
+    char* buf;
+    int* buf_in, * buf_out;
+    int peer_fd;
+    fd_event_t* fd_event_peer;
+
+    if (is_c2s) {
+        buf = conn->buf_c2s;
+        buf_in = &(conn->buf_c2s_in);
+        buf_out = &(conn->buf_c2s_out);
+
+        peer_fd = conn->server_fd;
+        fd_event_peer = conn->server_event;
+    } else {
+        buf = conn->buf_s2c;
+        buf_in = &(conn->buf_s2c_in);
+        buf_out = &(conn->buf_s2c_out);
+
+        peer_fd = conn->client_fd;
+        fd_event_peer = conn->client_event;
+    }
+
+    while (*buf_in > *buf_out) {
+        int n = write(peer_fd, buf + *buf_out,
+            *buf_in - *buf_out);
 
         if (n < 0) { // 没写进去,要么阻塞要么出错
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 // 阻塞,注册 EPOLLOUT事件,让它写完
                 struct epoll_event ev = { .events = EPOLLIN | EPOLLOUT,
-                                         .data.ptr = conn->server_event };
-                Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev);
-                return 0;
+                                         .data.ptr = fd_event_peer };
+                Epoll_ctl(epfd, EPOLL_CTL_MOD, peer_fd, &ev);
+                return TRY_WRITE_BLOCKED;
             } else {
-                perror("write to server");
-                return 1;
+                fprintf(stderr, "[%s -> %s] , write to %s\n", __FILE__, __func__, is_c2s ? "server" : "client");
+                return TRY_WRITE_ERR;
             }
         }
-        conn->buf_c2s_out += n;
+        // 调试代码
+        printf("%.*s", n, buf + *buf_out);
+
+        *buf_out += n;
     }
 
-    // 如果所有数据都被写完了,取消监听,清空缓冲区状态
-    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = conn->server_event };
-    Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev);
 
-    conn->buf_c2s_in = 0;
-    conn->buf_c2s_out = 0;
+    *buf_in = 0;
+    *buf_out = 0;
+
+    return TRY_WRITE_OK;
+}
+
+int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state,
+    int epfd) {
+
+    // 一.首先尝试还没写完的数据
+    write_result_t result = try_writing_to_peer(conn, epfd, 1);
+    if (result == TRY_WRITE_ERR) // 出错
+        return 1;
+    else if (result == TRY_WRITE_BLOCKED) { // 阻塞,等 EPOLLOUT 再写
+        return 0;
+    } else if (result == TRY_WRITE_OK) {
+        // 如果所有数据都被写完了,取消监听
+        struct epoll_event ev = { .events = EPOLLIN, .data.ptr = conn->server_event };
+        Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev);
+    }
+
 
     // 二.读取客户端新数据
     int n = read(conn->client_fd, conn->buf_c2s, sizeof(conn->buf_c2s));
@@ -166,25 +205,11 @@ int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state,
         conn->buf_c2s_in = n;
         conn->buf_c2s_out = 0;
         // 继续写新读到的数据
-        while (conn->buf_c2s_in > conn->buf_c2s_out) {
-            int n = write(conn->server_fd, conn->buf_c2s + conn->buf_c2s_out,
-                conn->buf_c2s_in - conn->buf_c2s_out);
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    struct epoll_event ev2 = { .events = EPOLLIN | EPOLLOUT,
-                                              .data.ptr = conn->server_event };
-                    Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->server_fd, &ev2);
-                    return 0;
-                } else {
-                    perror("write to server");
-                    return 1;
-                }
-            }
-            conn->buf_c2s_out += n;
+        if (try_writing_to_peer(conn, epfd, 1) == 1)
+            return 1;
+        else if (errno == EAGAIN || errno == EWOULDBLOCK) { // 阻塞
+            return 0;
         }
-        // 写完后清空缓冲区
-        conn->buf_c2s_in = 0;
-        conn->buf_c2s_out = 0;
     }
 
     return 0;
@@ -192,26 +217,43 @@ int handle_connection_c2s_forwarding(conn_t* conn, conn_stat_t eof_state,
 
 int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state,
     int epfd) {
-    conn->buf_s2c_in =
-        Read(conn->server_fd, conn->buf_s2c, sizeof(conn->buf_s2c));
 
-    // 如果读到了EOF,说明客户端主动关闭了
-    if (conn->buf_s2c_in == 0) {
-        conn->server_closed_r = 1;
-        conn->state = eof_state;
+    // 一.首先尝试还没写完的数据
+    if (try_writing_to_peer(conn, epfd, 0) == 1) // 出错
+        return 1;
+    else if (errno == EAGAIN || errno == EWOULDBLOCK) { // 阻塞
         return 0;
     }
 
-    // 如果返回 1,说明暂时没数据
-    if (conn->buf_s2c_in < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
+    // 如果所有数据都被写完了,取消监听
+    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = conn->client_event };
+    Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->client_fd, &ev);
+
+    // 二.读取客户端新数据
+    int n = read(conn->server_fd, conn->buf_s2c, sizeof(conn->buf_s2c));
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // 阻塞,下次再读
             return 0;
-        else
+        } else {
+            perror("read from client");
             return 1;
+        }
+    } else if (n == 0) { // 读到EOF,客户端主动关闭了
+        conn->server_closed_r = 1;
+        conn->state = eof_state;
+        return 0;
+    } else { // 读到了,更新缓冲区
+        conn->buf_s2c_in = n;
+        conn->buf_s2c_out = 0;
+        // 继续写新读到的数据
+        if (try_writing_to_peer(conn, epfd, 0) == 1)
+            return 1;
+        else if (errno == EAGAIN || errno == EWOULDBLOCK) { // 阻塞
+            return 0;
+        }
     }
 
-    // 读到的不是EOF,内容发送给客户端
-    write(conn->client_fd, conn->buf_s2c, conn->buf_s2c_in);
     return 0;
 }
 
@@ -220,19 +262,18 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
     int is_client = fd_event->is_client;
 
     switch (conn->state) {
-        case CONN_INIT:
-            int ret = try_parse_http_request(conn);
-            if (ret == 1) {
-                conn->state = CONN_ERROR;
-                break;
-            } else if (ret == 0 && conn->parse_state !=
-                PARSE_COMPLETE) // 没读完,直接返回等待下次读取
-                break;
+        case CONN_INIT: {
+                int ret = try_parse_http_request(conn);
+                if (ret == 1) {
+                    conn->state = CONN_ERROR;
+                    break;
+                } else if (ret == 0 && conn->parse_state !=
+                    PARSE_COMPLETE) // 没读完,直接返回等待下次读取
+                    break;
 
-            if (add_server_to_epoll(epfd, conn) != 0)
-                conn->state = CONN_ERROR;
-
-            break;
+                if (add_server_to_epoll(epfd, conn) != 0)
+                    conn->state = CONN_ERROR;
+            }   break;
 
         case CONN_ACTIVE:
             if (is_client) { // 如果是客户端

@@ -45,10 +45,9 @@ int main() {
             if (fd_event == NULL) { // 新连接到来
                 printf("检测到新连接\n");
                 add_client_to_epoll(epfd, listen_fd);
-            }
-            else { // 已有连接
-                if (handle_connection_state(fd_event, epfd) == 1)
-                    handle_connection_state(fd_event, epfd);
+            } else { // 已有连接
+                if (handle_connection_state(fd_event, epfd) != 0)
+                    handle_connection_state(fd_event, epfd); // 处理CONN_ERROR
             }
         }
     }
