@@ -1,10 +1,10 @@
-#include "http_util.h"
-#include "config.h"
-#include "rio.h"
+#include "http/http_util.h"
+#include "common/config.h"
+#include "common/rio.h"
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
-#include<stdlib.h>
+#include <stdlib.h>
 
 void httpError(int client_fd, const char* message) {
     rio_written(client_fd, (void*)message, strlen(message));

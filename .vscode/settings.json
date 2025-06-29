@@ -55,6 +55,7 @@
         "cstring": "c",
         "__bit_reference": "c",
         "__string": "c",
-        "err.h": "c"
+        "err.h": "c",
+        "sys_wrap.h": "c"
     }
 }

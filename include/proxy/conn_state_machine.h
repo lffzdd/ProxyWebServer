@@ -1,8 +1,8 @@
 #ifndef CONN_STATE_MACHINE_H
 #define CONN_STATE_MACHINE_H
 
-#include "config.h"
-#include "http_util.h"
+#include "common/config.h"
+#include "http/http_util.h"
 
 typedef enum {
   CONN_INIT,                  // 初始状态,连接到服务器

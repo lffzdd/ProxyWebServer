@@ -35,9 +35,6 @@
 *.i*86
 *.x86_64
 *.hex
-# proxy
-# client
-# server
 
 # Debug files
 *.dSYM/
@@ -54,15 +51,5 @@ Module.symvers
 Mkfile.old
 dkms.conf
 
-# Project specific
-build/
-apps/client/save.html
-
-# Editor files
-.vscode/
-.idea/
-*.swp
-*~
-
-# Generated files
-*.log
+# 此目录特有的忽略规则
+save.html

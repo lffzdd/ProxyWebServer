@@ -1,9 +1,8 @@
 #define _POSIX_C_SOURCE 200122L
-#include "net_utils.h"
-#include "config.h"
-#include "http_proxy.h"
-#include "rio.h"
-#include "sys_wrap.h"
+#include "net/net_utils.h"
+#include "common/config.h"
+#include "common/rio.h"
+#include "common/sys_wrap.h"
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -103,11 +102,6 @@ int openConnectfd(const char* hostname, const char* port) {
     return server_fd;
 }
 
-int proxyClient(int client_fd) {
-    // httpsProxy(client_fd);
-
-    return 0;
-}
 
 int make_socket_non_blocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);

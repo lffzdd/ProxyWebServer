@@ -1,11 +1,10 @@
 #include<unistd.h>
 #include<fcntl.h>
 #include<string.h>
-#include "http_respond.h"
-#include"http_util.h"
-#include"config.h"
-#include"rio.h"
-#include"sys_wrap.h"
+#include"http/http_util.h"
+#include"common/config.h"
+#include"common/rio.h"
+#include"common/sys_wrap.h"
 
 int handle_get_method(int client_fd, const http_request_t* req) {
     const char* real_uri = req->uri[0] == '/' ? req->uri + 1 : req->uri; // 确保根路径后只有1个/

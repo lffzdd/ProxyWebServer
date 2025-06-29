@@ -1,7 +1,8 @@
-#include "conn_state_machine.h"
-#include "http_util.h"
-#include "net_utils.h"
-#include "sys_wrap.h"
+#include "proxy/conn_state_machine.h"
+#include "http/http_util.h"
+#include "net/net_utils.h"
+#include "common/sys_wrap.h"
+#include "common/logger.h"
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,16 +11,32 @@
 
 int add_client_to_epoll(int epfd, int listen_fd) {
     int client_fd = acceptClientfd(listen_fd);
+    if (client_fd < 0) {
+        LOG_ERROR("接受客户端连接失败: %s", strerror(errno));
+        return -1;
+    }
 
-    printf("新连接client_fd为:%d\n", client_fd);
+    LOG_INFO("新连接 client_fd=%d", client_fd);
 
     conn_t* conn = Malloc(sizeof(conn_t));
+    if (!conn) {
+        LOG_ERROR("内存分配失败: %s", strerror(errno));
+        close(client_fd);
+        return -1;
+    }
 
     memset(conn, 0, sizeof(conn_t));
     conn->client_fd = client_fd;
     conn->state = CONN_INIT;
 
     fd_event_t* fd_event = Malloc(sizeof(fd_event_t));
+    if (!fd_event) {
+        LOG_ERROR("内存分配失败: %s", strerror(errno));
+        free(conn);
+        close(client_fd);
+        return -1;
+    }
+
     memset(fd_event, 0, sizeof(fd_event_t));
     fd_event->conn = conn;
     fd_event->is_client = 1;
@@ -27,7 +44,13 @@ int add_client_to_epoll(int epfd, int listen_fd) {
     conn->client_event = fd_event;
 
     struct epoll_event ev = { .events = EPOLLIN, .data.ptr = fd_event };
-    Epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev);
+    if (Epoll_ctl(epfd, EPOLL_CTL_ADD, client_fd, &ev) < 0) {
+        LOG_ERROR("将客户端添加到epoll失败: %s", strerror(errno));
+        free(fd_event);
+        free(conn);
+        close(client_fd);
+        return -1;
+    }
 
     return 0;
 }
@@ -38,18 +61,21 @@ int try_parse_http_request(conn_t* conn) {
     int n = read(conn->client_fd, conn->parse_buffer + conn->parse_buffer_in,
         sizeof(conn->parse_buffer) - conn->parse_buffer_in);
 
-    if (n < 0) {                                   // 阻塞或者出错
-        if (errno == EAGAIN || errno == EWOULDBLOCK) // 阻塞, return 0下次读
+    if (n < 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            // 阻塞, return 0下次读
             return 0;
-        else {
+        } else {
+            LOG_ERROR("读取客户端数据失败: %s", strerror(errno));
             return 1;
-        };
-    } else if (n == 0 &&
-        conn->parse_buffer_in == 0) { // 读到EOF,且之前没读到过数据
+        }
+    } else if (n == 0 && conn->parse_buffer_in == 0) {
+        // 读到EOF,且之前没读到过数据
+        LOG_INFO("客户端关闭连接 fd=%d", conn->client_fd);
         return 1;
     } else {
-        printf("%.*s", n, conn->parse_buffer + conn->parse_buffer_in); // 调试代码
         conn->parse_buffer_in += n;
+        LOG_DEBUG("读取客户端数据 %d 字节", n);
     }
 
     //  异步,每读取一次都尝试解析请求行
@@ -89,7 +115,7 @@ int parse_request_line(conn_t* conn) {
     char method[64], uri[256], version[64];
     int parsed = sscanf(conn->parse_buffer + conn->parse_buffer_out, "%s %s %s", method, uri, version);
 
-    printf("解析请求行: method='%s', uri='%s', version='%s'\n", method, uri, version); // 调试
+    printf("解析请求行: method='%s', uri='%s', version='%s'\n", method, uri, version); // 调试代码
 
     if (parsed < 3) {
         printf("请求行解析失败，只解析到 %d 个字段\n", parsed);
@@ -146,19 +172,19 @@ int parse_request_host(conn_t* conn) {
 
 int add_server_to_epoll(int epfd, conn_t* conn) {
     int server_fd;
-    char host[1024];
-    char port[16];
+    char host[1024] = {0};
+    char port[16] = {0};
 
-    printf("准备连接到服务器: %s\n", conn->req.host); // 调试信息
+    LOG_INFO("准备连接到服务器: %s", conn->req.host);
 
     // 解析 host:port 格式
     char* colon = strchr(conn->req.host, ':');
     if (colon) {
         // 有端口号
-        *colon = '\0';
-        strcpy(host, conn->req.host);
+        size_t host_len = colon - conn->req.host;
+        strncpy(host, conn->req.host, host_len);
+        host[host_len] = '\0';
         strcpy(port, colon + 1);
-        *colon = ':'; // 恢复
     } else {
         // 没有端口号，根据方法类型设置默认端口
         strcpy(host, conn->req.host);
@@ -168,39 +194,60 @@ int add_server_to_epoll(int epfd, conn_t* conn) {
             strcpy(port, "80");
     }
 
-    printf("解析后 - 主机: %s, 端口: %s\n", host, port); // 调试信息
+    LOG_DEBUG("解析后 - 主机: %s, 端口: %s", host, port);
 
     server_fd = openConnectfd(host, port);
 
     if (server_fd <= 0) {
-        printf("连接服务器失败: %s:%s, fd=%d\n", host, port, server_fd); // 调试信息
-        perror("add_server_to_epoll->openConnectfd");
+        LOG_ERROR("连接服务器失败: %s:%s - %s", host, port, strerror(errno));
 
         // 向客户端发送错误响应
-        const char* error_resp = "HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n";
+        const char* error_resp = "HTTP/1.1 502 Bad Gateway\r\n"
+                                "Content-Type: text/plain\r\n"
+                                "Connection: close\r\n"
+                                "\r\n"
+                                "无法连接到目标服务器";
         write(conn->client_fd, error_resp, strlen(error_resp));
 
         return 1;
     }
 
-    printf("成功连接到服务器: %s:%s, server_fd=%d\n", host, port, server_fd); // 调试信息
+    LOG_INFO("成功连接到服务器: %s:%s, server_fd=%d", host, port, server_fd);
 
     // 为 server_fd 注册 EPOLL_IN
     conn->server_fd = server_fd;
 
     fd_event_t* fd_event = Malloc(sizeof(fd_event_t));
+    if (!fd_event) {
+        LOG_ERROR("内存分配失败");
+        close(server_fd);
+        return 1;
+    }
+    
     fd_event->conn = conn;
     fd_event->is_client = 0;
 
     conn->server_event = fd_event;
 
     struct epoll_event ev = { .events = EPOLLIN, .data.ptr = fd_event };
-    Epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev);
+    if (Epoll_ctl(epfd, EPOLL_CTL_ADD, server_fd, &ev) < 0) {
+        LOG_ERROR("将服务器添加到epoll失败: %s", strerror(errno));
+        free(fd_event);
+        close(server_fd);
+        return 1;
+    }
 
     // 如果是CONNECT,准备异步发送响应
     if (conn->req.method == CONNECT) {
-        const char* resp = "HTTP/1.1 200 Connection Established\r\n\r\n";
+        const char* resp = "HTTP/1.1 200 Connection Established\r\n"
+                         "Connection: keep-alive\r\n"
+                         "\r\n";
         conn->connect_resp_len = strlen(resp);
+        if (conn->connect_resp_len > sizeof(conn->connect_resp) - 1) {
+            LOG_ERROR("CONNECT响应缓冲区过小");
+            return 1;
+        }
+        
         strcpy(conn->connect_resp, resp);
         conn->connect_resp_sent = 0;
 
@@ -209,7 +256,12 @@ int add_server_to_epoll(int epfd, conn_t* conn) {
 
         // 注册客户端的EPOLLOUT事件来异步发送响应
         struct epoll_event ev = { .events = EPOLLIN | EPOLLOUT, .data.ptr = conn->client_event };
-        Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->client_fd, &ev);
+        if (Epoll_ctl(epfd, EPOLL_CTL_MOD, conn->client_fd, &ev) < 0) {
+            LOG_ERROR("修改客户端epoll事件失败: %s", strerror(errno));
+            return 1;
+        }
+        
+        LOG_DEBUG("CONNECT请求处理中, 准备发送隧道建立响应");
     } else {
         conn->state = CONN_ACTIVE;
     }
@@ -291,8 +343,8 @@ write_result_t try_writing_to_peer(conn_t* conn, int epfd, int is_c2s) {
                 return TRY_WRITE_ERR;
             }
         }
-        // 调试代码
-        printf("%.*s", n, buf + *buf_out);
+        
+        // printf("%.*s", n, buf + *buf_out); // 调试代码
 
         *buf_out += n;
     }
@@ -383,7 +435,7 @@ int handle_connection_s2c_forwarding(conn_t* conn, conn_stat_t eof_state,
         conn->state = eof_state;
         return 0;
     } else { // 读到了,更新缓冲区
-        printf("%.*s", n, conn->buf_s2c); // 调试代码
+        // printf("%.*s", n, conn->buf_s2c); // 调试代码
 
         conn->buf_s2c_in = n;
         conn->buf_s2c_out = 0;
@@ -462,13 +514,17 @@ int handle_connection_state(fd_event_t* fd_event, int epfd) {
             if (conn->client_fd > 0) {
                 Epoll_ctl(epfd, EPOLL_CTL_DEL, conn->client_fd, NULL);
                 close(conn->client_fd);
-                printf("关闭 client_fd %d 连接", conn->client_fd); // 调试代码
+                LOG_INFO("关闭客户端连接 fd=%d", conn->client_fd);
+                conn->client_fd = -1;  // 标记为已关闭
             }
             if (conn->server_fd > 0) {
                 Epoll_ctl(epfd, EPOLL_CTL_DEL, conn->server_fd, NULL);
                 close(conn->server_fd);
+                LOG_INFO("关闭服务器连接 fd=%d", conn->server_fd);
+                conn->server_fd = -1;  // 标记为已关闭
             }
-            // 释放所有相关的内存
+
+            // 释放连接资源
             if (conn->client_event) free(conn->client_event);
             if (conn->server_event) free(conn->server_event);
             free(conn);

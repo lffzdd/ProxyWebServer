@@ -1,4 +1,4 @@
-#include "rio.h"
+#include "common/rio.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -88,7 +88,7 @@ static ssize_t rio_read(rio_t* rp, char* usrbuf, size_t n) {
 
     // 从rio缓冲区中复制min(n,rp->rio_buf_left_cnt)个字节到用户缓冲区中
     cnt = n;
-    if (rp->rio_buf_left_cnt < n)
+    if ((size_t)rp->rio_buf_left_cnt < n)
         cnt = rp->rio_buf_left_cnt;
     memcpy(
         usrbuf, rp->rio_buf_bptr,
@@ -126,7 +126,8 @@ ssize_t rio_readnb(rio_t* rp, void* usrbuf, size_t n) {
  * 字符串安全：自动在末尾添加空字符\0，确保输出为合法C字符串。
  */
 ssize_t rio_readlineb(rio_t* rp, void* usrbuf, size_t line_len) {
-    int n, rc;
+    size_t n;
+    int rc;
     char c, * bufp = usrbuf;
 
     for (n = 1; n < line_len; n++) {
